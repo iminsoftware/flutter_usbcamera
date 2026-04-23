@@ -1,5 +1,7 @@
 # flutter_usbcamera
 
+[English](README_EN.md) | 中文
+
 Flutter 插件，用于 Android 平台 UVC（USB Video Class）摄像头的预览、拍照、录像、录音及 OpenGL 特效渲染。
 
 基于 [AndroidUSBCamera (AUSBC)](https://github.com/jiangdongguo/AndroidUSBCamera) 库封装。
@@ -388,6 +390,133 @@ ndk.dir=/path/to/Android/Sdk/ndk/27.0.12077973
 
 USB 设备权限由系统弹窗授予，首次连接时会弹出。如果用户拒绝，会收到 `onCancelDev` 事件。拔掉重插可以重新触发权限请求。
 
+## 开发者文档
+
+### 项目架构
+
+```
+flutter_usbcamera/
+├── lib/
+│   ├── flutter_usbcamera.dart                  # 公开 API 导出
+│   ├── flutter_usbcamera_platform_interface.dart  # 平台接口抽象层
+│   ├── flutter_usbcamera_method_channel.dart      # MethodChannel 实现
+│   └── src/
+│       ├── models.dart                  # 数据模型（UsbDevice, CameraEvent, CameraRequest 等）
+│       ├── usb_camera_controller.dart   # 单摄像头控制器
+│       ├── multi_camera_controller.dart # 多摄像头控制器
+│       └── usb_camera_preview.dart      # 预览 Widget（PlatformView）
+├── android/
+│   ├── src/main/kotlin/.../FlutterUsbcameraPlugin.kt  # Android 原生插件入口
+│   ├── libausbc/    # AUSBC 摄像头核心库
+│   ├── libuvc/      # UVC 协议 C 库（NDK 编译）
+│   └── libnative/   # JNI 原生桥接层
+├── example/         # 示例应用
+└── test/            # 单元测试
+```
+
+### 通信机制
+
+Flutter 与 Android 原生之间通过两个通道通信：
+
+- `MethodChannel('flutter_usbcamera')` — 用于 Dart 调用原生方法（打开/关闭摄像头、拍照、录像等）
+- `EventChannel('flutter_usbcamera/events')` — 用于原生向 Dart 推送事件（设备插拔、摄像头状态变化、拍摄回调等）
+
+预览画面通过 `PlatformViewLink` + Hybrid Composition 方式嵌入，viewType 为 `flutter_usbcamera/cameraview`。
+
+### 核心类说明
+
+| 类 | 职责 |
+|----|------|
+| `UsbCameraController` | 单摄像头场景的控制器，管理 USB 注册、权限、摄像头开关、拍摄、参数调节、特效等 |
+| `MultiCameraController` | 多摄像头场景的控制器，支持同时打开多个 USB 摄像头，独立控制拍照/录像 |
+| `UsbCameraPreview` | 预览 Widget，内部使用 Android PlatformView（Hybrid Composition）渲染 TextureView |
+| `CameraEvent` | 事件模型，封装所有从原生层推送的事件（设备插拔、状态变化、拍摄回调等） |
+| `CameraRequest` | 打开摄像头时的参数配置（分辨率、渲染模式、预览格式、旋转角度） |
+| `FlutterUsbcameraPlugin` | Android 原生插件入口（Kotlin），处理 MethodChannel 调用并桥接 AUSBC 库 |
+
+### 本地开发
+
+1. 克隆仓库：
+
+```bash
+git clone https://github.com/iminsoftware/flutter_usbcamera.git
+cd flutter_usbcamera
+```
+
+2. 安装依赖：
+
+```bash
+flutter pub get
+cd example && flutter pub get
+```
+
+3. 运行示例应用（需要连接 Android 设备）：
+
+```bash
+cd example
+flutter run
+```
+
+4. 运行测试：
+
+```bash
+flutter test
+```
+
+### 原生层开发
+
+Android 原生代码位于 `android/` 目录，包含三个子模块：
+
+- `libuvc` — UVC 协议的 C 实现，通过 NDK 编译为 `.so` 文件，负责底层 USB 视频流解析
+- `libnative` — JNI 桥接层，连接 Java/Kotlin 层与 libuvc
+- `libausbc` — 基于 [AndroidUSBCamera](https://github.com/jiangdongguo/AndroidUSBCamera) 的 Kotlin 封装，提供摄像头生命周期管理、预览渲染、拍摄等高层 API
+
+修改原生代码后，需要在 example 项目中重新构建：
+
+```bash
+cd example
+flutter clean
+flutter run
+```
+
+### 添加新的 MethodChannel 方法
+
+1. 在 `FlutterUsbcameraPlugin.kt` 中的 `onMethodCall` 添加新的 case 处理
+2. 在 `UsbCameraController` 或 `MultiCameraController` 中添加对应的 Dart 方法
+3. 如果需要新的数据模型，在 `models.dart` 中定义
+4. 更新 `flutter_usbcamera.dart` 的导出（如有新文件）
+
+### 添加新的事件类型
+
+1. 在 `CameraEventType` 枚举中添加新类型
+2. 在 Android 端通过 `EventChannel` 的 `EventSink` 发送对应事件
+3. `CameraEvent.fromMap` 会自动解析新的事件类型（需确保 `event` 字段名与枚举名一致）
+
+### 发布
+
+```bash
+# 检查发布前的问题
+flutter pub publish --dry-run
+
+# 正式发布到 pub.dev
+flutter pub publish
+```
+
+发布后在 [pub.dev](https://pub.dev) 包管理页面将包转移到 `imin.sg` publisher。
+
+### 贡献指南
+
+1. Fork 本仓库
+2. 创建功能分支：`git checkout -b feature/your-feature`
+3. 提交改动：`git commit -m 'feat: add your feature'`
+4. 推送分支：`git push origin feature/your-feature`
+5. 提交 Pull Request
+
+请确保：
+- 代码通过 `flutter analyze` 检查
+- 新功能附带对应的使用说明
+- Commit message 遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范
+
 ## License
 
-Apache License 2.0
+BSD 3-Clause License

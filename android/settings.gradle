@@ -1,5 +1,2 @@
-rootProject.name = 'flutter_usbcamera'
-
-include ':libausbc'
-include ':libnative'
-include ':libuvc'
+rootProject.name = "USBCameraWebView"
+include ':app'
